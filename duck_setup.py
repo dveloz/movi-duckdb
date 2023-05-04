@@ -13,11 +13,39 @@ class DuckDBBuilder:
     def __init__(self) -> None:
         self.access_key = input("Escribe tu AWS_ACCESS_KEY_ID: ")
         self.secret_key = input("Escribe tu AWS_SECRET_ACCESS_KEY: ")
+        self._verify_aws_settings()
         self.facts_path = self._get_facts_path()
         self.duck_db_path = Path().home().joinpath('movicar-duckdb')
         self.logger = logging.getLogger("MoviDuckDBInstaller")
 
+    
+    def _verify_aws_settings(self) -> None:
+        """Verifies that the aws settings exist and generates it in case they 
+        do not exist.
+        """
+        aws_shared_credentials_path = Path().home().joinpath('.aws')
+        os.makedirs(aws_shared_credentials_path, exist_ok=True)
+        
+        aws_config_path = Path().home().joinpath('.aws', 'config')
+        aws_credentials_path = Path().home().joinpath('.aws', 'credentials')
+        self._write_aws_config(aws_config_path)
+        self._write_aws_credentials(aws_credentials_path)
 
+    
+    def _write_aws_config(self, config_path:Path) -> None:
+        """Writes the credentials configuration file"""
+        with open(config_path, 'w') as file:
+            file.write("[default]\nregion = us-west-1")
+
+    
+    def _write_aws_credentials(self, creds_path:Path) -> None:
+        """Writes the credentials file"""
+        output = f"[default]\naws_access_key_id = {self.access_key}\n"
+        output += f"aws_secret_access_key = {self.secret_key}"
+        with open(creds_path, 'w') as file:
+            file.write(output)
+
+    
     def _crawl_tables_paths(self) -> List[str]:
         """Returns a list of directories containing tables.
 
@@ -47,8 +75,12 @@ class DuckDBBuilder:
         sql_template = """CREATE OR REPLACE VIEW {table}
                           AS SELECT * FROM '{path}/*.parquet';"""
         for table_path in self._crawl_tables_paths():
-            conn.execute(sql_template.format(table=table_path.name, 
+            try:
+                conn.execute(sql_template.format(table=table_path.name, 
                                              path=table_path.as_uri()))
+            except duckdb.IOException as e:
+                error_msg = f"{e}\n\nCould not connect to S3. Please verify credentials"
+                raise IOError(error_msg)
 
 
     def _load_s3_deps(self, conn:duckdb.DuckDBPyConnection) -> None:
