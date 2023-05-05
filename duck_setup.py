@@ -11,9 +11,9 @@ class DuckDBBuilder:
     Make sure to close your Database viewer.
     """
     def __init__(self) -> None:
+        self.access_key = None  # populated after calling _verify_aws_settings
+        self.secret_key = None  # populated after calling _verify_aws_settings 
         self._verify_aws_settings()
-        self.access_key = input("Escribe tu AWS_ACCESS_KEY_ID: ")
-        self.secret_key = input("Escribe tu AWS_SECRET_ACCESS_KEY: ")
         self.s3_db_path = S3Path(f'/movi-data-lake').joinpath("analytics-prod")
         self.duck_db_path = Path().home().joinpath('movicar-duckdb')
         self.logger = logging.getLogger("MoviDuckDBInstaller")
@@ -25,6 +25,17 @@ class DuckDBBuilder:
         """
         aws_shared_credentials_path = Path().home().joinpath('.aws')
         os.makedirs(aws_shared_credentials_path, exist_ok=True)
+        if self._creds_exist():
+            creds = self._read_creds_vars()
+            self.access_key = creds['aws_access_key_id']
+            self.secret_key = creds['aws_secret_access_key']
+        else:
+            self._prompt_for_credentials()
+
+
+    def _prompt_for_credentials(self) -> None:
+        self.access_key = input("Escribe tu AWS_ACCESS_KEY_ID: ")
+        self.secret_key = input("Escribe tu AWS_SECRET_ACCESS_KEY: ")
 
     
     def _save_credentials(self) -> None:
@@ -58,6 +69,40 @@ class DuckDBBuilder:
         with open(creds_path, 'w') as file:
             file.write(output)
     
+
+    def _creds_exist(self) -> bool:
+        """Checks whether the AWS credentials file exists.
+
+        Returns:
+            bool: _description_
+        """
+        if not Path().home().joinpath('.aws', 'credentials').exists():
+            return False
+        
+        if not Path().home().joinpath('.aws', 'config').exists():
+            return False
+        
+        return True
+
+
+    def _read_creds_vars(self) -> dict:
+        """Reads variables defined in a folder.
+
+        Returns:
+            dict: A dictionary with the variables defined in the .aws file
+        """
+        variables = {}
+        creds_path = Path().home().joinpath('.aws', 'credentials')
+        with open(creds_path, 'r') as file:
+            for line in file:
+                line = line.strip()
+                if '=' in line:
+                    variable, value = line.split('=')
+                    variables[variable.strip()] = value.strip()
+                
+        return variables
+
+
 
     def _crawl_schemas(self) -> List[str]:
         """Returns a dict where each key is a schema of the database
@@ -153,7 +198,8 @@ class DuckDBBuilder:
         # we crawl our database
         schema_map = self._get_schema_map()
         # we save creds locally
-        self._save_credentials()
+        if not self._creds_exist():
+            self._save_credentials()
         # we setup our database
         self._setup_views(conn, schema_map)
         self.logger.info("DuckDB setup correctly")
