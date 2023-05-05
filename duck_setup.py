@@ -1,7 +1,7 @@
 import duckdb
 from pathlib import Path
 import os
-from typing import List
+from typing import List, Tuple
 from s3path import S3Path
 import logging
 
@@ -14,7 +14,7 @@ class DuckDBBuilder:
         self.access_key = input("Escribe tu AWS_ACCESS_KEY_ID: ")
         self.secret_key = input("Escribe tu AWS_SECRET_ACCESS_KEY: ")
         self._verify_aws_settings()
-        self.facts_path = self._get_facts_path()
+        self.s3_db_path = S3Path(f'/movi-data-lake').joinpath("analytics-prod")
         self.duck_db_path = Path().home().joinpath('movicar-duckdb')
         self.logger = logging.getLogger("MoviDuckDBInstaller")
 
@@ -24,60 +24,89 @@ class DuckDBBuilder:
         do not exist.
         """
         aws_shared_credentials_path = Path().home().joinpath('.aws')
-        os.makedirs(aws_shared_credentials_path, exist_ok=True)
-        
-        aws_config_path = Path().home().joinpath('.aws', 'config')
-        aws_credentials_path = Path().home().joinpath('.aws', 'credentials')
-        self._write_aws_config(aws_config_path)
-        self._write_aws_credentials(aws_credentials_path)
+        os.makedirs(aws_shared_credentials_path, exist_ok=True)    
 
     
-    def _write_aws_config(self, config_path:Path) -> None:
+    def _write_aws_config(self) -> None:
         """Writes the credentials configuration file"""
+        config_path = Path().home().joinpath('.aws', 'config')
         with open(config_path, 'w') as file:
             file.write("[default]\nregion = us-west-1")
 
     
-    def _write_aws_credentials(self, creds_path:Path) -> None:
+    def _write_aws_credentials(self) -> None:
         """Writes the credentials file"""
+        creds_path = Path().home().joinpath('.aws', 'credentials')
         output = f"[default]\naws_access_key_id = {self.access_key}\n"
         output += f"aws_secret_access_key = {self.secret_key}"
         with open(creds_path, 'w') as file:
             file.write(output)
-
     
-    def _crawl_tables_paths(self) -> List[str]:
+
+    def _crawl_schemas(self) -> List[str]:
+        """Returns a dict where each key is a schema of the database
+
+        Returns:
+            dict: Dictionary where each key is a schema, values are empty lists
+        """
+        schemas = []
+        for path in self.s3_db_path.iterdir():
+            if path.is_dir():
+                schemas.append(path.name)
+        return schemas
+
+
+    def _crawl_tables_paths(self, schema:str) -> List[str]:
         """Returns a list of directories containing tables.
 
         Returns:
             List[str]: List of table names.
         """
-        return list(self.facts_path.iterdir())
+        return list(self.s3_db_path.joinpath(schema).iterdir()) 
 
     
-    def _get_facts_path(self) -> Path:
-        """Returns the path where the 'facts' data is located
+    def _get_schema_map(self) -> dict:
+        """Crawls the S3 data to infer the schemas and existing tables.
 
         Returns:
-            Path: Path with of the 'facts'.
+            dict: dictionary where each key is a schema and the value is a 
+        list with the tables in the schema
         """
-        return S3Path(f'/movi-data-lake').joinpath("analytics-prod", "facts")
-    
-    
-    def _setup_views(self, conn:duckdb.DuckDBPyConnection) -> None:
-        """Creates a set of Views in a given DuckDB instance.
+        schema_map = {}
+        self.logger.info("Exploring Movicar data...")
 
+        schemas = self._crawl_schemas()
+        for schema in schemas:
+            schema_map[schema] = self._crawl_tables_paths(schema)
+        return schema_map
+    
+
+    def _create_schema(self, schema:str, conn:duckdb.DuckDBPyConnection) -> None:
+        conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema};")
+
+
+    def _create_table(self, schema:str, table_path:S3Path, 
+                      conn:duckdb.DuckDBPyConnection) -> None:
+        sql_template = """CREATE OR REPLACE VIEW {schema}.{table}
+                          AS SELECT * FROM '{path}/*.parquet';"""
+        conn.execute(sql_template.format(schema=schema, 
+                                                     table=table_path.name, 
+                                                     path=table_path.as_uri()
+                                                    ))
+
+    def _setup_views(self, conn:duckdb.DuckDBPyConnection, 
+                     schema_map:dict) -> None:
+        """Creates a set of Views in a given DuckDB instance.
         Args:
             conn (duckdb.DuckDBPyConnection): A connection to the DuckDB 
             instance where the views will be created.
         """
-        self.logger.info("Exploring Movicar data...")
-        sql_template = """CREATE OR REPLACE VIEW {table}
-                          AS SELECT * FROM '{path}/*.parquet';"""
-        for table_path in self._crawl_tables_paths():
+
+        for schema in schema_map:
+            self._create_schema(schema, conn)
             try:
-                conn.execute(sql_template.format(table=table_path.name, 
-                                             path=table_path.as_uri()))
+                for table_path in schema_map[schema]:
+                    self._create_table(schema, table_path, conn)
             except duckdb.IOException as e:
                 error_msg = f"{e}\n\nCould not connect to S3. Please verify credentials"
                 raise IOError(error_msg)
@@ -105,7 +134,13 @@ class DuckDBBuilder:
                  read_only=False
                 )
         self._load_s3_deps(conn)
-        self._setup_views(conn)
+        # we crawl our database
+        schema_map = self._get_schema_map()
+        # we save creds locally
+        self._write_aws_config()
+        self._write_aws_credentials()
+        # we setup our database
+        self._setup_views(conn, schema_map)
         self.logger.info("DuckDB setup correctly")
 
 
