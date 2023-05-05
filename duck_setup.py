@@ -11,9 +11,9 @@ class DuckDBBuilder:
     Make sure to close your Database viewer.
     """
     def __init__(self) -> None:
+        self._verify_aws_settings()
         self.access_key = input("Escribe tu AWS_ACCESS_KEY_ID: ")
         self.secret_key = input("Escribe tu AWS_SECRET_ACCESS_KEY: ")
-        self._verify_aws_settings()
         self.s3_db_path = S3Path(f'/movi-data-lake').joinpath("analytics-prod")
         self.duck_db_path = Path().home().joinpath('movicar-duckdb')
         self.logger = logging.getLogger("MoviDuckDBInstaller")
@@ -24,9 +24,25 @@ class DuckDBBuilder:
         do not exist.
         """
         aws_shared_credentials_path = Path().home().joinpath('.aws')
-        os.makedirs(aws_shared_credentials_path, exist_ok=True)    
+        os.makedirs(aws_shared_credentials_path, exist_ok=True)
 
     
+    def _save_credentials(self) -> None:
+        """Asks the user if they want to save their credentials. Saves them in 
+        case they agree.
+        """
+        while True:
+            save_creds = input("Do you want to save your credentiales (y/n): ")
+            if save_creds.lower() in ['y','yes']:
+                self._write_aws_config()
+                self._write_aws_credentials()
+                break
+            elif save_creds.lower() in ['n', 'no']:
+                break
+            else:
+                self.logger.error(f"Invalid response '{save_creds}'")
+
+
     def _write_aws_config(self) -> None:
         """Writes the credentials configuration file"""
         config_path = Path().home().joinpath('.aws', 'config')
@@ -137,8 +153,7 @@ class DuckDBBuilder:
         # we crawl our database
         schema_map = self._get_schema_map()
         # we save creds locally
-        self._write_aws_config()
-        self._write_aws_credentials()
+        self._save_credentials()
         # we setup our database
         self._setup_views(conn, schema_map)
         self.logger.info("DuckDB setup correctly")
