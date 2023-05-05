@@ -5,6 +5,7 @@ from typing import List, Tuple
 from s3path import S3Path
 import logging
 
+# ToDo: Add custom profile to aws config file instead of overwriting.
 
 class DuckDBBuilder:
     """Builds a DuckDB instance that uses data allocated in a S3 instance.
