@@ -1,2 +1,4 @@
 tmp/
 *.duckdb
+
+__pycache__/
