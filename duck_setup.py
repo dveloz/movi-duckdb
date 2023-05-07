@@ -144,16 +144,24 @@ class DuckDBBuilder:
     
 
     def _create_schema(self, schema:str, conn:duckdb.DuckDBPyConnection) -> None:
-        conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema};")
+        if schema != 'main':
+            conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema};")
 
 
     def _create_table(self, schema:str, table_path:S3Path, 
                       conn:duckdb.DuckDBPyConnection) -> None:
-        sql_template = """CREATE OR REPLACE VIEW {schema}.{table}
+        if schema != 'main':
+            sql_template = """CREATE OR REPLACE VIEW {schema}.{table}
                           AS SELECT * FROM '{path}/*.parquet';"""
-        conn.execute(sql_template.format(schema=schema, 
-                                                     table=table_path.name, 
-                                                     path=table_path.as_uri()
+            conn.execute(sql_template.format(schema=schema, 
+                                             table=table_path.name, 
+                                             path=table_path.as_uri()
+                                                    ))
+        else:
+            sql_template = """CREATE OR REPLACE VIEW {table}
+                          AS SELECT * FROM '{path}/*.parquet';"""
+            conn.execute(sql_template.format(table=table_path.name, 
+                                             path=table_path.as_uri()
                                                     ))
 
     def _setup_views(self, conn:duckdb.DuckDBPyConnection, 
