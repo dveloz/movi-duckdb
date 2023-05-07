@@ -11,14 +11,14 @@ class DuckDBBuilder:
     """Builds a DuckDB instance that uses data allocated in a S3 instance.
     Make sure to close your Database viewer.
     """
-    def __init__(self) -> None:
+    def __init__(self, in_memory=False) -> None:
         self.access_key = None  # populated after calling _verify_aws_settings
         self.secret_key = None  # populated after calling _verify_aws_settings 
         self._verify_aws_settings()
         self.s3_db_path = S3Path(f'/movi-data-lake').joinpath("analytics-prod")
         self.duck_db_path = Path().home().joinpath('movicar-duckdb')
         self.logger = logging.getLogger("MoviDuckDBInstaller")
-
+        self.in_memory = in_memory
     
     def _verify_aws_settings(self) -> None:
         """Verifies that the aws settings exist and generates it in case they 
@@ -186,15 +186,22 @@ class DuckDBBuilder:
         conn.execute(f"SET s3_secret_access_key='{self.secret_key}';")
         
 
-    def build_duck_db(self):
+    def build_duck_db(self, return_instance:bool=False) -> duckdb.DuckDBPyConnection:
         """Runner that setups a Movicar DuckDB instance.
         """
         self.logger.info("Creating DuckDB instance...")
         os.makedirs(self.duck_db_path, exist_ok=True)
+
+        if self.in_memory:
+            database_file = ':memory:'
+        else:
+            database_file = str(self.duck_db_path.joinpath('analytics-prod.duckdb'))
+
         conn = duckdb.connect(
-                 database=str(self.duck_db_path.joinpath('analytics-prod.duckdb')),
+                 database=database_file,
                  read_only=False
                 )
+        
         self._load_s3_deps(conn)
         # we crawl our database
         schema_map = self._get_schema_map()
@@ -204,6 +211,8 @@ class DuckDBBuilder:
         # we setup our database
         self._setup_views(conn, schema_map)
         self.logger.info("DuckDB setup correctly")
+        if return_instance:
+            return conn
 
 
 if __name__ == '__main__':
