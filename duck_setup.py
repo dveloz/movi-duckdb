@@ -13,7 +13,7 @@ class DuckDBBuilder:
     """
     def __init__(self, in_memory=False) -> None:
         self.access_key = None  # populated after calling _verify_aws_settings
-        self.secret_key = None  # populated after calling _verify_aws_settings 
+        self.secret_key = None  # populated after calling _verify_aws_settings
         self._verify_aws_settings()
         self.s3_db_path = S3Path(f'/movi-data-lake').joinpath("analytics-prod")
         self.duck_db_path = Path().home().joinpath('movicar-duckdb')
@@ -37,8 +37,11 @@ class DuckDBBuilder:
     def _prompt_for_credentials(self) -> None:
         self.access_key = input("Escribe tu AWS_ACCESS_KEY_ID: ")
         self.secret_key = input("Escribe tu AWS_SECRET_ACCESS_KEY: ")
+        os.environ["AWS_ACCESS_KEY_ID"] = self.access_key
+        os.environ["AWS_SECRET_ACCESS_KEY"] = self.secret_key
+        os.environ["AWS_DEFAULT_REGION"] = "us-west-1"
 
-    
+
     def _save_credentials(self) -> None:
         """Asks the user if they want to save their credentials. Saves them in 
         case they agree.
