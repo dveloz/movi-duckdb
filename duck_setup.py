@@ -12,9 +12,15 @@ class DuckDBBuilder:
     Make sure to close your Database viewer.
     """
     def __init__(self, in_memory=False) -> None:
-        self.access_key = None  # populated after calling _verify_aws_settings
-        self.secret_key = None  # populated after calling _verify_aws_settings
-        self._verify_aws_settings()
+        if os.getenv('MODE', 'dev') == 'prod':
+            self.access_key = os.getenv("AWS_ACCESS_KEY_ID")
+            self.secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+            self._write_aws_config()
+            self._write_aws_credentials()
+        else:
+            self.access_key = None  # populated after calling _verify_aws_settings
+            self.secret_key = None  # populated after calling _verify_aws_settings
+            self._verify_aws_settings()
         self.s3_db_path = S3Path(f'/movi-data-lake').joinpath("analytics-prod")
         self.duck_db_path = Path().home().joinpath('movicar-duckdb')
         self.logger = logging.getLogger("MoviDuckDBInstaller")
@@ -30,7 +36,7 @@ class DuckDBBuilder:
             creds = self._read_creds_vars()
             self.access_key = creds['aws_access_key_id']
             self.secret_key = creds['aws_secret_access_key']
-        else:
+        else:            
             self._prompt_for_credentials()
 
 
@@ -61,6 +67,8 @@ class DuckDBBuilder:
     def _write_aws_config(self) -> None:
         """Writes the credentials configuration file"""
         config_path = Path().home().joinpath('.aws', 'config')
+        
+        os.makedirs(config_path.parent, exist_ok=True)
         with open(config_path, 'w') as file:
             file.write("[default]\nregion = us-west-1")
 
@@ -68,6 +76,8 @@ class DuckDBBuilder:
     def _write_aws_credentials(self) -> None:
         """Writes the credentials file"""
         creds_path = Path().home().joinpath('.aws', 'credentials')
+        
+        os.makedirs(creds_path.parent, exist_ok=True)
         output = f"[default]\naws_access_key_id = {self.access_key}\n"
         output += f"aws_secret_access_key = {self.secret_key}"
         with open(creds_path, 'w') as file:
