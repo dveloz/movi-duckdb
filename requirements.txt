@@ -1,2 +1,2 @@
-duckdb
+duckdb==0.7.*
 s3path
