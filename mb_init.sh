@@ -2,7 +2,7 @@
 
 echo "Building DuckdB script..."
 
-python ~/movi-duckdb/duck_setup.py >> logs.txt 2>&1
+python /home/movi-duckdb/duck_setup.py >> logs.txt 2>&1
 return_code=$?
 
 if [ $return_code -eq 0 ]; then
