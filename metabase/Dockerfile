@@ -1,8 +1,8 @@
 # Stage 1 Build generates the python package
 FROM python:3.10-buster as python_builder
 
-RUN git clone https://github.com/dveloz/movi-duckdb.git ~/movi-duckdb && \
-    cd ~/movi-duckdb && \
+RUN git clone https://github.com/dveloz/movi-duckdb.git /home/movi-duckdb && \
+    cd /home/movi-duckdb && \
     pip install -r requirements.txt
 
 
@@ -24,9 +24,7 @@ ADD https://github.com/AlexR2D2/metabase_duckdb_driver/releases/download/0.2.0/d
 # We mount the python image unto the metabase image
 COPY --from=python_builder / /
 
-RUN chmod 744 /home/plugins/duckdb.metabase-driver.jar &&\
-    python ~/movi-duckdb/duck_setup.py
-
+RUN chmod 744 /home/plugins/duckdb.metabase-driver.jar && chmod 744 /home/movi-duckdb/mb_init.sh
 
 # ToDo: Create a script that generates a duckdb file using the movi-etl private repo
-CMD ["java", "-jar", "/home/metabase.jar"]
+CMD ["sh", "-c", "/home/movi-duckdb/mb_init.sh"]
