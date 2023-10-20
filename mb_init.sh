@@ -3,6 +3,7 @@
 echo "Building DuckdB script..."
 
 python /home/movi-duckdb/duck_setup.py >> logs.txt 2>&1
+
 return_code=$?
 
 if [ $return_code -eq 0 ]; then
@@ -13,5 +14,7 @@ fi
 
 echo "DuckDB builder execution complete."
 
+
+java -jar /home/metabase.jar
 echo "Starting Metabase..."
 
